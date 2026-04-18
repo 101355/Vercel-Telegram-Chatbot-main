@@ -1,18 +1,45 @@
-import { NextResponse } from 'next/server';
-import { redis } from '@/lib/redis';
+import {getBot} from "@/lib/bot";
+import {NextRequest, NextResponse} from "next/server";
 
-export const dynamic = 'force-dynamic';
+export async function POST(req: NextRequest) {
+  try {
+    const bot = getBot();
+
+    if (!bot) {
+      console.error("❌ Bot is not initialized");
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Bot not configured. Please check TELEGRAM_TOKEN environment variable.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const update = await req.json();
+    await bot.handleUpdate(update);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("❌ Webhook error:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: String(error),
+      },
+      { status: 500 },
+    );
+  }
+}
 
 export async function GET() {
-  try {
-    const redisPing = await redis.ping();
-    const status = {
-      status: 'ok',
-      time: new Date().toISOString(),
-      redis: redisPing === 'PONG' ? 'ok' : 'error',
-    };
-    return NextResponse.json(status);
-  } catch {
-    return NextResponse.json({ status: 'error', redis: 'disconnected' }, { status: 500 });
-  }
+  return NextResponse.json({
+    message:
+      "Webhook endpoint is working. Use POST to receive updates from Telegram.",
+    bot_configured: !!process.env.TELEGRAM_TOKEN,
+    redis_configured: !!(
+      process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
+    ),
+  });
 }
