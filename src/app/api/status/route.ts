@@ -1,45 +1,44 @@
 import {getBot} from "@/lib/bot";
-import {NextRequest, NextResponse} from "next/server";
-
-export async function POST(req: NextRequest) {
-  try {
-    const bot = getBot();
-
-    if (!bot) {
-      console.error("❌ Bot is not initialized");
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Bot not configured. Please check TELEGRAM_TOKEN environment variable.",
-        },
-        { status: 500 },
-      );
-    }
-
-    const update = await req.json();
-    await bot.handleUpdate(update);
-
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("❌ Webhook error:", error);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: String(error),
-      },
-      { status: 500 },
-    );
-  }
-}
+import {getRedis} from "@/lib/redis";
+import {NextResponse} from "next/server";
 
 export async function GET() {
+  let botStatus = "not_configured";
+  let redisStatus = "not_configured";
+
+  // Check bot
+  const bot = getBot();
+  if (bot) {
+    botStatus = "ready";
+  } else if (process.env.TELEGRAM_TOKEN) {
+    botStatus = "init_failed";
+  }
+
+  // Check Redis
+  const redis = getRedis();
+  if (redis) {
+    try {
+      await redis.ping();
+      redisStatus = "connected";
+    } catch {
+      redisStatus = "error";
+    }
+  } else if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    redisStatus = "init_failed";
+  }
+
   return NextResponse.json({
-    message:
-      "Webhook endpoint is working. Use POST to receive updates from Telegram.",
-    bot_configured: !!process.env.TELEGRAM_TOKEN,
-    redis_configured: !!(
-      process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-    ),
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    bot: {
+      configured: !!process.env.TELEGRAM_TOKEN,
+      status: botStatus,
+    },
+    redis: {
+      configured: !!(
+        process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
+      ),
+      status: redisStatus,
+    },
   });
 }
